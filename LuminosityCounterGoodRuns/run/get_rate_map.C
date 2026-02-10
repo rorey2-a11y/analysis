@@ -59,6 +59,13 @@ float p_from_rate(float colrate, float beamrate, int n)
   float den = factorial(n);
   return num/den;
 }
+
+float p_from_truerate(float truerate, float beamrate, int n)
+{
+  float ratio = truerate/beamrate;
+  return exp(-ratio)*pow(ratio,n)/factorial(n);
+}
+
 float get_true_rate(float colrate, float beamrate)
 {
   float sum = 0;
@@ -83,6 +90,7 @@ int get_rate_map()
   float p_of_n[ncount];
   const int nrate = 400000;
   float mbd_rate[nrate];
+  float mbd_r2[nrate];
   float col_rate[nrate];
   float true_rate[nrate];
   float true_rate_sparse[nrate/100];
@@ -96,17 +104,22 @@ int get_rate_map()
     {
       col_rate[r] = 10*r;
       float total = 0;
+      float total2 = 0;
+      true_rate[r] = get_true_rate(col_rate[r],beamrate);
       for(int i=0; i<ncount; ++i)
 	{
 	  total += p_mbd_given_ncol[i]*p_from_rate(col_rate[r], beamrate, i+1);
+	  total2 += p_mbd_given_ncol[i]*p_from_truerate(true_rate[r], beamrate, i+1);
 	}
       if(total > 0.5) cout << total << endl;
       mbd_rate[r] = total*beamrate;
-      true_rate[r] = get_true_rate(col_rate[r],beamrate);
+      mbd_r2[r] = total*beamrate;
       if(r%100==0)
 	{
 	  mbd_rate_sparse[r/100]=mbd_rate[r];
 	  true_rate_sparse[r/100]=true_rate[r];
+	  cout << "total p: " << total - total2 << endl;
+	  cout << "rate diff [Hz]: "  << mbd_rate[r] - mbd_r2[r] << endl;
 	}
     }
   TGraph* g = new TGraph(nrate, mbd_rate, col_rate);
