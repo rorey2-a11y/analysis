@@ -83,6 +83,10 @@ class wholeEventEECs : public SubsysReco
     const float obsMax[5] = {static_cast<float>(sqrt(2.2*2.2 + M_PI*M_PI)), 2.2, M_PI, M_PI, 1.0};
     const std::string caloNames[4] = {"EMCal","IHCal","OHCal","All"};
 
+    std::map<std::array<float, 3>, float> towers[4];
+    std::map<std::array<float, 3>, float> towersCorrected[4];
+
+    /*
     std::map<std::array<float, 3>, float> EMCalTowers;
     std::map<std::array<float, 3>, float> IHCalTowers;
     std::map<std::array<float, 3>, float> OHCalTowers;
@@ -92,6 +96,7 @@ class wholeEventEECs : public SubsysReco
     std::map<std::array<float, 3>, float> IHCalCorrectedTowers;
     std::map<std::array<float, 3>, float> OHCalCorrectedTowers;
     std::map<std::array<float, 3>, float> AllCorrectedTowers;
+    */
 
     std::string m_outputName = "wholeEventEEC.root";
     TFile *m_outputFile{nullptr};
@@ -116,6 +121,11 @@ class wholeEventEECs : public SubsysReco
 
     JetContainer *jets{nullptr};
     
+    TowerInfoContainer *towerInfoContainers[3]{nullptr};
+    RawTowerGeomContainer_Cylinderv1 *geoms[3]{nullptr};
+    RawTowerGeomContainer_Cylinderv1 *emcal_geom{nullptr};
+
+    /*
     TowerInfoContainer *emcalTowerInfoContainer{nullptr};
     TowerInfoContainer *ihcalTowerInfoContainer{nullptr};
     TowerInfoContainer *ohcalTowerInfoContainer{nullptr};
@@ -123,6 +133,7 @@ class wholeEventEECs : public SubsysReco
     RawTowerGeomContainer_Cylinderv1 *emcal_geom{nullptr};
     RawTowerGeomContainer_Cylinderv1 *ihcal_geom{nullptr};
     RawTowerGeomContainer_Cylinderv1 *ohcal_geom{nullptr};
+    */
 
     GlobalVertexMap *vtxMap{nullptr};
     GlobalVertex *vtx{nullptr};

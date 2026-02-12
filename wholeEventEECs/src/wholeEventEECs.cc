@@ -124,8 +124,8 @@ std::array<float, 5> wholeEventEECs::calc_observables(std::map<std::array<float,
 {
     float dEta = std::abs(iterA->first[0] - iterB->first[0]);
     float dPhi = iterA->first[1] - iterB->first[1];
-    if(dPhi > M_PI) dPhi += 2*M_PI;
-    if(dPhi < -M_PI) dPhi -= 2*M_PI;
+    if(dPhi > M_PI) dPhi -= 2*M_PI;
+    if(dPhi < -M_PI) dPhi += 2*M_PI;
     dPhi = std::abs(dPhi);
 
     float dR = sqrt(dEta*dEta + dPhi*dPhi);
@@ -150,24 +150,33 @@ std::array<float, 5> wholeEventEECs::calc_observables(std::map<std::array<float,
 int wholeEventEECs::InitRun(PHCompositeNode *topNode)
 {
 
-    emcalTowerInfoContainer = findNode::getClass<TowerInfoContainer>(topNode,"TOWERINFO_CALIB_CEMC_RETOWER");
-    ihcalTowerInfoContainer = findNode::getClass<TowerInfoContainer>(topNode,"TOWERINFO_CALIB_HCALIN");
-    ohcalTowerInfoContainer = findNode::getClass<TowerInfoContainer>(topNode,"TOWERINFO_CALIB_HCALOUT");
 
-    if(!emcalTowerInfoContainer || !ihcalTowerInfoContainer || !ohcalTowerInfoContainer)
+
+    towerInfoContainers[0] = findNode::getClass<TowerInfoContainer>(topNode,"TOWERINFO_CALIB_CEMC_RETOWER");
+    towerInfoContainers[1] = findNode::getClass<TowerInfoContainer>(topNode,"TOWERINFO_CALIB_HCALIN");
+    towerInfoContainers[2] = findNode::getClass<TowerInfoContainer>(topNode,"TOWERINFO_CALIB_HCALOUT");
+
+    if(!towerInfoContainers[0] || !towerInfoContainers[1] || !towerInfoContainers[2])
     {
         std::cout << "One or more TowerInfoContainers missing. Exiting" << std::endl;
         return Fun4AllReturnCodes::ABORTRUN;
     }
 
     emcal_geom = findNode::getClass<RawTowerGeomContainer_Cylinderv1>(topNode, "TOWERGEOM_CEMC");
-    ihcal_geom = findNode::getClass<RawTowerGeomContainer_Cylinderv1>(topNode, "TOWERGEOM_HCALIN");
-    ohcal_geom = findNode::getClass<RawTowerGeomContainer_Cylinderv1>(topNode, "TOWERGEOM_HCALOUT");
-    if(!emcal_geom || !ihcal_geom || !ohcal_geom)
+    geoms[0] = findNode::getClass<RawTowerGeomContainer_Cylinderv1>(topNode, "TOWERGEOM_HCALIN");
+    geoms[1] = findNode::getClass<RawTowerGeomContainer_Cylinderv1>(topNode, "TOWERGEOM_HCALIN");
+    geoms[2] = findNode::getClass<RawTowerGeomContainer_Cylinderv1>(topNode, "TOWERGEOM_HCALOUT");
+    if(!geoms[0] || !geoms[1] || !geoms[2])
     {
         std::cout << "One or more Tower Geometry Containers missing. Exiting" << std::endl;
         return Fun4AllReturnCodes::ABORTRUN;
     }
+
+    emcal_geom->set_calorimeter_id(RawTowerDefs::CEMC);
+    geoms[0]->set_calorimeter_id(RawTowerDefs::HCALIN);
+    geoms[1]->set_calorimeter_id(RawTowerDefs::HCALIN);
+    geoms[2]->set_calorimeter_id(RawTowerDefs::HCALOUT);
+    
 
     vtxMap = findNode::getClass<GlobalVertexMap>(topNode, "GlobalVertexMap");
     if(!vtxMap)
@@ -222,7 +231,13 @@ int wholeEventEECs::InitRun(PHCompositeNode *topNode)
 
 int wholeEventEECs::process_event(PHCompositeNode *topNode)
 {
+    for(int i=0; i<4; i++)
+    {
+        towers[i].clear();
+        towersCorrected[i].clear();
+    }
 
+    /*
     EMCalTowers.clear();
     IHCalTowers.clear();
     OHCalTowers.clear();
@@ -232,6 +247,7 @@ int wholeEventEECs::process_event(PHCompositeNode *topNode)
     IHCalCorrectedTowers.clear();
     OHCalCorrectedTowers.clear();
     AllCorrectedTowers.clear();
+    */
 
     m_eventIndex++;
 
@@ -271,11 +287,36 @@ int wholeEventEECs::process_event(PHCompositeNode *topNode)
     m_nGoodEvents++;
     nEvents->Fill(1);
 
+    for(int calo = 0; calo < 3; calo++)
+    {
+        for(int i = 0; i < (int) towerInfoContainers[calo]->size(); i++)
+        {
+            if(!towerInfoContainers[calo]->get_tower_at_channel(i)->get_isGood()) continue;
+            auto key = towerInfoContainers[calo]->encode_key(i);
+            auto tower = towerInfoContainers[calo]->get_tower_at_channel(i);
+            int phiBin = towerInfoContainers[calo]->getTowerPhiBin(key);
+            int etaBin = towerInfoContainers[calo]->getTowerEtaBin(key);
+            float phiCenter = geoms[calo]->get_phicenter(phiBin);
+            float etaCenter = geoms[calo]->get_etacenter(etaBin);
+            float r = geoms[calo]->get_radius();
+            if(calo == 0) r = emcal_geom->get_radius();
+            std::array<float, 3> center {etaCenter, phiCenter, r};
+            towers[calo].insert(std::make_pair(center, tower->get_energy()));
+            if(towers[3].find(center) != towers[3].end()) towers[3].at(center) += tower->get_energy();
+            else towers[3][center] = tower->get_energy();
+
+            std::array<float, 3> newCenter = correct_for_vertex(center);
+            towersCorrected[calo].insert(std::make_pair(newCenter, tower->get_energy()));
+            if(towersCorrected[3].find(newCenter) != towersCorrected[3].end()) towersCorrected[3].at(newCenter) += tower->get_energy();
+            else towersCorrected[3][newCenter] = tower->get_energy();
+        }
+    }
+
+    /*
     for(int i=0; i<(int) emcalTowerInfoContainer->size(); i++)
     {
         if(!emcalTowerInfoContainer->get_tower_at_channel(i)->get_isGood()) continue;
-        emcal_geom->set_calorimeter_id(RawTowerDefs::CEMC);
-        ihcal_geom->set_calorimeter_id(RawTowerDefs::HCALIN);
+        
         auto key = emcalTowerInfoContainer->encode_key(i);
         auto tower = emcalTowerInfoContainer->get_tower_at_channel(i);
         int phiBin = emcalTowerInfoContainer->getTowerPhiBin(key);
@@ -337,7 +378,50 @@ int wholeEventEECs::process_event(PHCompositeNode *topNode)
         if(AllCorrectedTowers.find(newCenter) != AllCorrectedTowers.end()) AllCorrectedTowers.at(newCenter) += tower->get_energy();
         else AllCorrectedTowers[newCenter] = tower->get_energy();
     }
+    */
 
+    for(int calo = 0; calo < 4; calo++)
+    {
+        //original calo bins
+        for(auto it1 = towers[calo].begin(); it1 != towers[calo].end(); ++it1)
+        {
+            float pT1 = it1->second / cosh(it1->first[0]);
+            if(pT1 < 0.3) continue;
+            for(auto it2 = std::next(it1); it2 != towers[calo].end(); ++it2)
+            {
+                float pT2 = it2->second / cosh(it2->first[0]);
+                if(pT2 < 0.3) continue;
+
+                std::array<float, 5> observables = calc_observables(it1, it2);
+                for(int i=0; i<5; i++)
+                {
+                    EEC[i][calo]->Fill(observables[i], pT1 * pT2);
+                }
+            }
+        }
+
+        //shiftex vertex
+        for(auto it1 = towersCorrected[calo].begin(); it1 != towersCorrected[calo].end(); ++it1)
+        {
+            float pT1 = it1->second / cosh(it1->first[0]);
+            if(pT1 < 0.3) continue;
+            for(auto it2 = std::next(it1); it2 != towersCorrected[calo].end(); ++it2)
+            {
+                float pT2 = it2->second / cosh(it2->first[0]);
+                if(pT2 < 0.3) continue;
+
+                std::array<float, 5> observables = calc_observables(it1, it2);
+                for(int i=0; i<5; i++)
+                {
+                    EEC_corr[i][calo]->Fill(observables[i], pT1 * pT2);
+                }
+            }
+        }
+    }
+
+    
+
+    /*
     //no correcting for vertex position
     for(auto it1 = EMCalTowers.begin(); it1 != EMCalTowers.end(); ++it1)
     {
@@ -483,6 +567,7 @@ int wholeEventEECs::process_event(PHCompositeNode *topNode)
             }
         }
     }
+    */
 
     return Fun4AllReturnCodes::EVENT_OK;
 }
